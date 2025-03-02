@@ -1,90 +1,155 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock your money</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body>
-    <div class="container">
-        <h1>Stock your money 💰</h1>
-        
-        <div class="input-section">
-            <h2>Add New Expense</h2>
-            <form id="expenseForm">
-                <input type="text" id="expenseName" placeholder="Expense name" required>
-                <input type="number" id="expenseAmount" placeholder="Amount" min="0" step="0.01" required>
-                <input type="date" id="expenseDate" required>
-                <select id="expenseCategory" required>
-                    <option value="">Select Category</option>
-                    <option value="Food">Food</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Housing">Housing</option>
-                    <option value="Entertainment">Entertainment</option>
-                    <option value="Utilities">Utilities</option>
-                    <option value="Other">Other</option>
-                </select>
-                <button type="submit">Add Expense</button>
-            </form>
-        </div>
+let expenses = JSON.parse(localStorage.getItem('expenses')) || [];
+let chartInstance = null;
 
-        <div class="filters">
-            <h2>Filters</h2>
-            <div class="filter-controls">
-                <input type="month" id="monthFilter">
-                <select id="categoryFilter">
-                    <option value="">All Categories</option>
-                    <option value="Food">Food</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Housing">Housing</option>
-                    <option value="Entertainment">Entertainment</option>
-                    <option value="Utilities">Utilities</option>
-                    <option value="Other">Other</option>
-                </select>
-                <button onclick="applyFilters()">Apply Filters</button>
-                <button onclick="clearFilters()">Clear Filters</button>
-            </div>
-        </div>
+document.addEventListener('DOMContentLoaded', () => {
+    renderExpenses();
+    updateSummary();
+    populateCategoryFilter();
+    initializeChart();
+});
 
-        <div class="summary">
-            <h2>Summary</h2>
-            <div class="summary-cards">
-                <div class="card">
-                    <h3>Total Expenses</h3>
-                    <p id="totalExpenses">$0.00</p>
-                </div>
-                <div class="card">
-                    <h3>Highest Expense</h3>
-                    <p id="highestExpense">$0.00</p>
-                </div>
-                <div class="card">
-                    <h3>Category Breakdown</h3>
-                    <canvas id="categoryChart"></canvas>
-                </div>
-            </div>
-        </div>
+document.getElementById('expenseForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const expense = {
+        id: Date.now(),
+        name: document.getElementById('expenseName').value,
+        amount: parseFloat(document.getElementById('expenseAmount').value),
+        date: document.getElementById('expenseDate').value,
+        category: document.getElementById('expenseCategory').value
+    };
+    
+    expenses.push(expense);
+    saveToLocalStorage();
+    renderExpenses();
+    updateSummary();
+    resetForm();
+});
 
-        <div class="expense-list">
-            <h2>Expenses</h2>
-            <table id="expenseTable">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Name</th>
-                        <th>Category</th>
-                        <th>Amount</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="expenseBody">
-                   
-                </tbody>
-            </table>
-        </div>
-    </div>
+function saveToLocalStorage() {
+    localStorage.setItem('expenses', JSON.stringify(expenses));
+}
 
-    <script src="script.js"></script>
-</body>
-</html>
+function renderExpenses(filteredExpenses = expenses) {
+    const tbody = document.getElementById('expenseBody');
+    tbody.innerHTML = '';
+    
+    filteredExpenses.forEach(expense => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${new Date(expense.date).toLocaleDateString()}</td>
+            <td>${expense.name}</td>
+            <td>${expense.category}</td>
+            <td>$${expense.amount.toFixed(2)}</td>
+            <td class="actions">
+                <button onclick="editExpense(${expense.id})" class="edit-btn">Edit</button>
+                <button onclick="deleteExpense(${expense.id})" class="delete-btn">Delete</button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function deleteExpense(id) {
+    expenses = expenses.filter(expense => expense.id !== id);
+    saveToLocalStorage();
+    renderExpenses();
+    updateSummary();
+}
+
+function editExpense(id) {
+    const expense = expenses.find(expense => expense.id === id);
+    document.getElementById('expenseName').value = expense.name;
+    document.getElementById('expenseAmount').value = expense.amount;
+    document.getElementById('expenseDate').value = expense.date;
+    document.getElementById('expenseCategory').value = expense.category;
+    deleteExpense(id);
+}
+
+function updateSummary() {
+    const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const highest = expenses.length ? Math.max(...expenses.map(e => e.amount)) : 0;
+    
+    document.getElementById('totalExpenses').textContent = `$${total.toFixed(2)}`;
+    document.getElementById('highestExpense').textContent = `$${highest.toFixed(2)}`;
+    
+    updateChart();
+}
+
+function initializeChart() {
+    const ctx = document.getElementById('categoryChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [
+                    '#4a90e2',
+                    '#50e3c2',
+                    '#ff7675',
+                    '#f9a825',
+                    '#6c5ce7',
+                    '#00b894'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+}
+
+function updateChart() {
+    const categories = [...new Set(expenses.map(e => e.category))];
+    const amounts = categories.map(cat => 
+        expenses.filter(e => e.category === cat).reduce((sum, e) => sum + e.amount, 0)
+    );
+    
+    chartInstance.data.labels = categories;
+    chartInstance.data.datasets[0].data = amounts;
+    chartInstance.update();
+}
+
+function applyFilters() {
+    const monthFilter = document.getElementById('monthFilter').value;
+    const categoryFilter = document.getElementById('categoryFilter').value;
+    
+    let filtered = expenses;
+    
+    if (monthFilter) {
+        filtered = filtered.filter(expense => 
+            expense.date.startsWith(monthFilter)
+        );
+    }
+    
+    if (categoryFilter) {
+        filtered = filtered.filter(expense => 
+            expense.category === categoryFilter
+        );
+    }
+    
+    renderExpenses(filtered);
+}
+
+function clearFilters() {
+    document.getElementById('monthFilter').value = '';
+    document.getElementById('categoryFilter').value = '';
+    renderExpenses();
+}
+
+function populateCategoryFilter() {
+    const categoryFilter = document.getElementById('categoryFilter');
+    const categories = ['Food', 'Transport', 'Housing', 'Entertainment', 'Utilities', 'Other'];
+    
+    categories.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        categoryFilter.appendChild(option);
+    });
+}
+
+function resetForm() {
+    document.getElementById('expenseForm').reset();
+}
